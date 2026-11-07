@@ -83,6 +83,12 @@ void SixAxis::OnUpdate(const Core::Timing::CoreTiming& core_timing) {
             if (controller.sixaxis_sensor_enabled && Settings::values.motion_enabled.GetValue()) {
                 controller.sixaxis_at_rest = true;
                 for (std::size_t e = 0; e < motion_state.size(); ++e) {
+                    if (motion_state[e].accel.elems == std::array<f32, 3>{}) {
+                        // No motion source is streaming on this slot. A real IMU never
+                        // reports exactly-zero acceleration (gravity is always present),
+                        // so treat the slot as at rest instead of invalid zeros.
+                        continue;
+                    }
                     controller.sixaxis_at_rest =
                         controller.sixaxis_at_rest && motion_state[e].is_at_rest;
                 }
@@ -107,6 +113,15 @@ void SixAxis::OnUpdate(const Core::Timing::CoreTiming& core_timing) {
                     return;
                 }
                 if (!Settings::values.motion_enabled.GetValue()) {
+                    state = default_motion_state;
+                    return;
+                }
+                if (hid_state.accel.elems == std::array<f32, 3>{}) {
+                    // No motion input is streaming on this slot (e.g. the joycon driver
+                    // failed to enable the IMU). A real IMU never reports exactly-zero
+                    // acceleration, so forward a sane at-rest sensor instead of invalid
+                    // zeros that break guest sensor self-checks (Switch Sports boot
+                    // calibration, and similar motion validation screens).
                     state = default_motion_state;
                     return;
                 }
