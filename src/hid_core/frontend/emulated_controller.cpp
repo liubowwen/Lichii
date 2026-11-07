@@ -1626,6 +1626,29 @@ void EmulatedController::SetSupportedNpadStyleTag(NpadStyleTag supported_styles)
         Connect();
         return;
     }
+
+    // Fallback single Joy-Cons to Dual joycons. Games narrow their supported style set while
+    // running (e.g. controller assignment screens in Nintendo Switch Sports drop joycon_left and
+    // joycon_right mid-session). On hardware the physical unit stays connected; disconnecting the
+    // emulated controller instead strands the player with no input until the game happens to widen
+    // the set again. Reconnect as a full pair so the inputs keep flowing; when the game re-widens
+    // its supported set, the original type is restored by the reconnect logic above.
+    if ((npad_type == NpadStyleIndex::JoyconLeft || npad_type == NpadStyleIndex::JoyconRight) &&
+        supported_style_tag.joycon_dual) {
+        LOG_WARNING(Service_HID, "Reconnecting controller type {} as Dual Joycons", npad_type.load());
+        SetNpadStyleIndex(NpadStyleIndex::JoyconDual);
+        Connect();
+        return;
+    }
+
+    // Fallback single Joy-Cons to Pro controllers
+    if ((npad_type == NpadStyleIndex::JoyconLeft || npad_type == NpadStyleIndex::JoyconRight) &&
+        supported_style_tag.fullkey) {
+        LOG_WARNING(Service_HID, "Reconnecting controller type {} as Pro controller", npad_type.load());
+        SetNpadStyleIndex(NpadStyleIndex::Fullkey);
+        Connect();
+        return;
+    }
     LOG_ERROR(Service_HID, "Controller type {} is not supported. Disconnecting controller", npad_type.load());
 }
 
