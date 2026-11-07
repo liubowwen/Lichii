@@ -145,6 +145,11 @@ class TextureCache : public VideoCommon::ChannelSetupCaches<TextureCacheChannelI
     u64 astc_opaque_images{};
     u64 astc_alpha_images{};
     std::vector<u8> astc_scan_buffer;
+    /// Guest addresses whose ASTC data ever scanned as having alpha. Streamed textures can be
+    /// scanned while the guest data is still arriving (zero blocks read as opaque), and letting
+    /// them flip BC1<->BC3 between recreations made them flicker and show black blocks. An
+    /// address stays on BC3 for the rest of the session once alpha is seen.
+    Common::unordered_set<GPUVAddr> astc_alpha_addrs;
     u64 images_deleted{};
     std::map<u64, std::pair<u32, GPUVAddr>> created_shapes;
     bool debug_stats{}; ///< Collect what only the debug statistics lines use
