@@ -2675,10 +2675,22 @@ ImageId TextureCache<P>::JoinImages(const ImageInfo& info, GPUVAddr gpu_addr, DA
         if (IsPixelFormatASTC(new_info.format) && runtime.UseOpaqueAstcFormat()) {
             const size_t scan_bytes = CalculateGuestSizeInBytes(new_info);
             if (scan_bytes <= MaxScanBytes) {
-                astc_scan_buffer.resize(scan_bytes);
-                gpu_memory->ReadBlockUnsafe(gpu_addr, astc_scan_buffer.data(), scan_bytes);
-                new_info.astc_opaque = AstcDataLooksOpaque(astc_scan_buffer);
-                ++(new_info.astc_opaque ? astc_opaque_images : astc_alpha_images);
+                if (astc_alpha_addrs.contains(gpu_addr)) {
+                    // Alpha seen at this address before: keep BC3, no need to scan again.
+                    new_info.astc_opaque = false;
+                    ++astc_alpha_images;
+                } else {
+                    astc_scan_buffer.resize(scan_bytes);
+                    gpu_memory->ReadBlockUnsafe(gpu_addr, astc_scan_buffer.data(), scan_bytes);
+                    new_info.astc_opaque = AstcDataLooksOpaque(astc_scan_buffer);
+                    if (!new_info.astc_opaque) {
+                        if (astc_alpha_addrs.size() >= 65536) {
+                            astc_alpha_addrs.clear();
+                        }
+                        astc_alpha_addrs.insert(gpu_addr);
+                    }
+                    ++(new_info.astc_opaque ? astc_opaque_images : astc_alpha_images);
+                }
             }
         }
     }
