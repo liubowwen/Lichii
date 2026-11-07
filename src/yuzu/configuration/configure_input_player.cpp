@@ -1228,7 +1228,6 @@ void ConfigureInputPlayer::UpdateControllerAvailableButtons() {
             ui->buttonShoulderButtonsRight,
             ui->buttonMiscButtonsPlusGroup,
             ui->buttonMiscButtonsHomeGroup,
-            ui->faceButtons,
             ui->RStick,
             ui->buttonMiscButtonsScreenshotGroup,
         };

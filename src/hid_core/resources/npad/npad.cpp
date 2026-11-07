@@ -467,6 +467,36 @@ void NPad::RequestPadStateUpdate(Kernel::KernelCore& kernel, u64 aruid, Core::HI
         pad_entry.l_stick = stick_state.left;
     }
 
+    // A single Joy-Con held sideways reports its four direction buttons as the face buttons: the
+    // console rotates the left half's layout before the game ever sees it. The left-only mask above
+    // drops A/B/X/Y, so without this a left Joy-Con can never report A and any game waiting on a
+    // confirm press stalls forever (Nintendo Switch Sports stays on "every player press A").
+    if (controller_type == Core::HID::NpadStyleIndex::JoyconLeft) {
+        constexpr btn face_button_mask = btn::A | btn::B | btn::X | btn::Y;
+        constexpr btn sideways_mask = btn::Left | btn::Up | btn::Right | btn::Down;
+
+        // The direction bits double as the face buttons, so they must not be reported twice:
+        // keeping them would both move a cursor and confirm in the same press.
+        btn rotated = pad_entry.npad_buttons.raw & (btn::All ^ sideways_mask);
+        rotated |= button_state.raw & face_button_mask;
+
+        const auto sideways = pad_entry.npad_buttons.raw & sideways_mask;
+        if ((sideways & btn::Right) != btn::None) {
+            rotated |= btn::A; // held sideways, the physical Right button is A
+        }
+        if ((sideways & btn::Down) != btn::None) {
+            rotated |= btn::B;
+        }
+        if ((sideways & btn::Up) != btn::None) {
+            rotated |= btn::X;
+        }
+        if ((sideways & btn::Left) != btn::None) {
+            rotated |= btn::Y;
+        }
+
+        pad_entry.npad_buttons.raw = rotated;
+    }
+
     if (controller_type == Core::HID::NpadStyleIndex::JoyconLeft ||
         controller_type == Core::HID::NpadStyleIndex::JoyconDual) {
         pad_entry.npad_buttons.left_sl.Assign(button_state.left_sl);
