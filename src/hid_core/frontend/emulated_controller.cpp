@@ -586,9 +586,7 @@ void EmulatedController::EnableConfiguration() {
     // have retyped the controller behind the user's back while a game narrowed its style set (a
     // single Joy-Con gets reconnected as Dual Joycons so its inputs keep flowing), and seeding from
     // npad_type made the configuration dialog display - and then save - that fallback type.
-    const auto configured_type = original_npad_type.load();
-    tmp_npad_type.store(configured_type == NpadStyleIndex::None ? npad_type.load()
-                                                               : configured_type);
+    tmp_npad_type.store(GetConfiguredNpadStyleIndex());
 }
 
 void EmulatedController::DisableConfiguration() {
@@ -656,9 +654,7 @@ void EmulatedController::SaveCurrentConfig() {
     // Both can differ while a game keeps the controller on a fallback style (see
     // SetSupportedNpadStyleTag()); saving npad_type would silently overwrite the user's choice with
     // that fallback, e.g. turning a configured single Joy-Con into "Dual Joycons".
-    const auto configured_type = original_npad_type.load();
-    player.controller_type = MapNPadToSettingsType(
-        configured_type == NpadStyleIndex::None ? npad_type.load() : configured_type);
+    player.controller_type = MapNPadToSettingsType(GetConfiguredNpadStyleIndex());
     for (std::size_t index = 0; index < player.buttons.size(); ++index) {
         player.buttons[index] = button_params[index].Serialize();
     }
@@ -1762,6 +1758,11 @@ NpadStyleIndex EmulatedController::GetNpadStyleIndex(bool get_temporary_value) c
     if (get_temporary_value && is_configuring)
         return tmp_npad_type;
     return npad_type;
+}
+
+NpadStyleIndex EmulatedController::GetConfiguredNpadStyleIndex() const {
+    const auto configured_type = original_npad_type.load();
+    return configured_type == NpadStyleIndex::None ? npad_type.load() : configured_type;
 }
 
 void EmulatedController::SetNpadStyleIndex(NpadStyleIndex npad_type_) {
