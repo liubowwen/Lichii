@@ -403,8 +403,11 @@ Common::Input::DriverResult Joycons::SetPollingMode(const PadIdentifier& identif
     }
 
     switch (polling_mode) {
-    case Common::Input::PollingMode::Active:
-        return handle->SetActiveMode();
+    case Common::Input::PollingMode::Active: {
+        const auto result = handle->SetActiveMode();
+        LOG_INFO(Input, "SetActiveMode result: {}", static_cast<int>(result));
+        return result;
+    }
     case Common::Input::PollingMode::Passive:
         return handle->SetPassiveMode();
     case Common::Input::PollingMode::IR:
@@ -472,6 +475,19 @@ void Joycons::OnStickUpdate(std::size_t port, Joycon::ControllerType type, int i
 
 void Joycons::OnMotionUpdate(std::size_t port, Joycon::ControllerType type, int id,
                              const Joycon::MotionData& value) {
+    // TEMPORARY diagnostics: log the first non-zero accel sample per pad so we can
+    // tell whether real IMU data is streaming at all.
+    static std::array<bool, 4> reported{};
+    if (port < reported.size() && !reported[port] &&
+        (value.accel_x != 0.0f || value.accel_y != 0.0f || value.accel_z != 0.0f)) {
+        reported[port] = true;
+        LOG_INFO(Input,
+                 "joycon motion dbg: first accel sample port={} id=({:.3f},{:.3f},{:.3f}) "
+                 "gyro=({:.3f},{:.3f},{:.3f})",
+                 port, value.accel_x, value.accel_y, value.accel_z, value.gyro_x, value.gyro_y,
+                 value.gyro_z);
+    }
+
     const auto identifier = GetIdentifier(port, type);
     BasicMotion motion_data{
         .gyro_x = value.gyro_x,
