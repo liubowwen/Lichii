@@ -165,16 +165,40 @@ void SixAxis::OnUpdate(const Core::Timing::CoreTiming& core_timing) {
             case Core::HID::NpadStyleIndex::None:
                 ASSERT(false);
                 break;
-            case Core::HID::NpadStyleIndex::Fullkey:
-                set_motion_state(sixaxis_fullkey_state, motion_state[0]);
+            case Core::HID::NpadStyleIndex::Fullkey: {
+                // Same retype situation as below: a single right Joy-Con streams on slot 1, so
+                // reading slot 0 while it runs as a Pro Controller reports no motion at all.
+                const auto configured_type = controller.device->GetConfiguredNpadStyleIndex();
+                const auto& hid_state = configured_type == Core::HID::NpadStyleIndex::JoyconRight
+                                            ? motion_state[1]
+                                            : motion_state[0];
+                set_motion_state(sixaxis_fullkey_state, hid_state);
                 break;
+            }
             case Core::HID::NpadStyleIndex::Handheld:
                 set_motion_state(sixaxis_handheld_state, motion_state[0]);
                 break;
-            case Core::HID::NpadStyleIndex::JoyconDual:
-                set_motion_state(sixaxis_dual_left_state, motion_state[0]);
-                set_motion_state(sixaxis_dual_right_state, motion_state[1]);
+            case Core::HID::NpadStyleIndex::JoyconDual: {
+                // A player holding a single Joy-Con can be running as Dual Joycons because the
+                // game narrowed its supported style set (see SetSupportedNpadStyleTag()). The
+                // game then reads the motion of the hand it expects that player to use, which is
+                // not necessarily the slot this Joy-Con streams on: a left Joy-Con only feeds
+                // motion_state[0], so a game reading the dual *right* sensor saw a motionless
+                // controller while the pad buttons kept working. Mirror the Joy-Con the player
+                // actually holds onto both dual sensors, so either hand reports its motion.
+                const auto configured_type = controller.device->GetConfiguredNpadStyleIndex();
+                if (configured_type == Core::HID::NpadStyleIndex::JoyconLeft) {
+                    set_motion_state(sixaxis_dual_left_state, motion_state[0]);
+                    set_motion_state(sixaxis_dual_right_state, motion_state[0]);
+                } else if (configured_type == Core::HID::NpadStyleIndex::JoyconRight) {
+                    set_motion_state(sixaxis_dual_left_state, motion_state[1]);
+                    set_motion_state(sixaxis_dual_right_state, motion_state[1]);
+                } else {
+                    set_motion_state(sixaxis_dual_left_state, motion_state[0]);
+                    set_motion_state(sixaxis_dual_right_state, motion_state[1]);
+                }
                 break;
+            }
             case Core::HID::NpadStyleIndex::JoyconLeft:
                 set_motion_state(sixaxis_left_lifo_state, motion_state[0]);
                 break;
