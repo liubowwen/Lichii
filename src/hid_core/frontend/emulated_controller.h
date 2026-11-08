@@ -221,6 +221,13 @@ public:
     NpadStyleIndex GetNpadStyleIndex(bool get_temporary_value = false) const;
 
     /**
+     * Gets the controller type the user configured, ignoring a temporary type the controller was
+     * retyped to while a game narrowed its supported style set
+     * @return NpadStyleIndex that represents the physical controller the player is holding
+     */
+    NpadStyleIndex GetConfiguredNpadStyleIndex() const;
+
+    /**
      * Sets the supported controller types. Disconnects the controller if current type is not
      * supported
      * @param supported_styles bitflag with supported types

@@ -449,6 +449,14 @@ void NPad::RequestPadStateUpdate(Kernel::KernelCore& kernel, u64 aruid, Core::HI
     const auto button_state = controller.device->GetNpadButtons();
     const auto stick_state = controller.device->GetSticks();
 
+    // A left Joy-Con stays a left Joy-Con even when the emulated controller had to be retyped: a
+    // game (or an applet it opens) narrowing its supported style set turns the sideways Joy-Con into
+    // a Dual Joycon or Pro Controller, and that stripped the face buttons again - the player could
+    // still aim but never confirm. Keep the sideways layout for as long as the retype lasts.
+    const bool is_sideways_left =
+        controller_type == Core::HID::NpadStyleIndex::JoyconLeft ||
+        controller.device->GetConfiguredNpadStyleIndex() == Core::HID::NpadStyleIndex::JoyconLeft;
+
     using btn = Core::HID::NpadButton;
     pad_entry.npad_buttons.raw = btn::None;
     if (controller_type != Core::HID::NpadStyleIndex::JoyconLeft) {
@@ -471,7 +479,7 @@ void NPad::RequestPadStateUpdate(Kernel::KernelCore& kernel, u64 aruid, Core::HI
     // console rotates the left half's layout before the game ever sees it. The left-only mask above
     // drops A/B/X/Y, so without this a left Joy-Con can never report A and any game waiting on a
     // confirm press stalls forever (Nintendo Switch Sports stays on "every player press A").
-    if (controller_type == Core::HID::NpadStyleIndex::JoyconLeft) {
+    if (is_sideways_left) {
         constexpr btn face_button_mask = btn::A | btn::B | btn::X | btn::Y;
         constexpr btn sideways_mask = btn::Left | btn::Up | btn::Right | btn::Down;
 
@@ -686,8 +694,8 @@ void NPad::OnUpdate(Kernel::KernelCore& kernel, const Core::Timing::CoreTiming& 
 
 Result NPad::SetSupportedNpadStyleSet(Kernel::KernelCore& kernel, u64 aruid, Core::HID::NpadStyleSet supported_style_set) {
     std::scoped_lock lock{mutex};
-    LOG_DEBUG(Service_HID, "SetSupportedNpadStyleSet: aruid={:016X}, style_set=0x{:X}", aruid,
-              static_cast<u32>(supported_style_set));
+    LOG_INFO(Service_HID, "SetSupportedNpadStyleSet: aruid={:016X}, style_set=0x{:X}", aruid,
+             static_cast<u32>(supported_style_set));
     hid_core.SetSupportedStyleTag({supported_style_set});
     const Result result = npad_resource.SetSupportedNpadStyleSet(aruid, supported_style_set);
     if (result.IsSuccess()) {
