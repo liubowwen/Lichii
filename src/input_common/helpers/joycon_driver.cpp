@@ -279,7 +279,8 @@ Common::Input::DriverResult JoyconDriver::SetPollingMode() {
     rumble_protocol->EnableRumble(vibration_enabled && supported_features.vibration);
 
     if (motion_enabled && supported_features.motion) {
-        generic_protocol->EnableImu(true);
+        const auto imu_result = generic_protocol->EnableImu(true);
+        LOG_INFO(Input, "EnableImu result: {}", static_cast<int>(imu_result));
         generic_protocol->SetImuConfig(gyro_sensitivity, gyro_performance,
                                        accelerometer_sensitivity, accelerometer_performance);
     } else {

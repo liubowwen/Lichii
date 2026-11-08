@@ -58,6 +58,31 @@ void SixAxis::OnUpdate(const Core::Timing::CoreTiming& core_timing) {
             }
 
             const auto& motion_state = controller.device->GetMotions();
+
+            // TEMPORARY diagnostics for guest sensor validation (Switch Sports Resort
+            // calibration). Logs once per second per npad; remove once resolved.
+            {
+                static std::array<int, NPAD_COUNT> dbg_ticks{};
+                if (++dbg_ticks[i] >= 200) {
+                    dbg_ticks[i] = 0;
+                    LOG_INFO(Service_HID,
+                             "sixaxis dbg: npad={} style={} sensor_enabled={} motion_enabled={} "
+                             "at_rest={}",
+                             i, static_cast<int>(controller_type),
+                             controller.sixaxis_sensor_enabled,
+                             Settings::values.motion_enabled.GetValue(),
+                             controller.sixaxis_at_rest);
+                    for (std::size_t e = 0; e < motion_state.size(); ++e) {
+                        const auto& m = motion_state[e];
+                        LOG_INFO(Service_HID,
+                                 "sixaxis dbg: npad={} slot={} accel=({:.3f},{:.3f},{:.3f}) "
+                                 "gyro=({:.3f},{:.3f},{:.3f}) rest={}",
+                                 i, e, m.accel[0], m.accel[1], m.accel[2], m.gyro[0], m.gyro[1],
+                                 m.gyro[2], m.is_at_rest);
+                    }
+                }
+            }
+
             auto& sixaxis_fullkey_state = controller.sixaxis_fullkey_state;
             auto& sixaxis_handheld_state = controller.sixaxis_handheld_state;
             auto& sixaxis_dual_left_state = controller.sixaxis_dual_left_state;
