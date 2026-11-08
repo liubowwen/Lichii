@@ -1084,7 +1084,21 @@ void ConfigureInputPlayer::UpdateUI() {
 }
 
 void ConfigureInputPlayer::SetConnectableControllers() {
-    const auto npad_style_set = hid_core.GetSupportedStyleTag();
+    auto npad_style_set = hid_core.GetSupportedStyleTag();
+
+    // Always offer the styles the emulated controllers can produce, regardless of what the running
+    // game currently accepts. Games narrow their supported style set mid-session (Nintendo Switch
+    // Sports does it on its controller assignment screen), and mirroring that set here left the
+    // player with a single "Dual Joycons" entry and no way to switch back to a single Joy-Con.
+    // Picking a style the game does not accept right now only defers the controller connection; the
+    // configured style is applied as soon as the game widens its set again.
+    npad_style_set.fullkey.Assign(1);
+    npad_style_set.handheld.Assign(1);
+    npad_style_set.joycon_dual.Assign(1);
+    npad_style_set.joycon_left.Assign(1);
+    npad_style_set.joycon_right.Assign(1);
+    npad_style_set.gamecube.Assign(1);
+
     index_controller_type_pairs.clear();
     ui->comboControllerType->clear();
 

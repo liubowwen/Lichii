@@ -686,6 +686,8 @@ void NPad::OnUpdate(Kernel::KernelCore& kernel, const Core::Timing::CoreTiming& 
 
 Result NPad::SetSupportedNpadStyleSet(Kernel::KernelCore& kernel, u64 aruid, Core::HID::NpadStyleSet supported_style_set) {
     std::scoped_lock lock{mutex};
+    LOG_DEBUG(Service_HID, "SetSupportedNpadStyleSet: aruid={:016X}, style_set=0x{:X}", aruid,
+              static_cast<u32>(supported_style_set));
     hid_core.SetSupportedStyleTag({supported_style_set});
     const Result result = npad_resource.SetSupportedNpadStyleSet(aruid, supported_style_set);
     if (result.IsSuccess()) {
