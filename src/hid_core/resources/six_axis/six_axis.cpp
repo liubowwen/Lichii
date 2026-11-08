@@ -76,9 +76,12 @@ void SixAxis::OnUpdate(const Core::Timing::CoreTiming& core_timing) {
                         const auto& m = motion_state[e];
                         LOG_INFO(Service_HID,
                                  "sixaxis dbg: npad={} slot={} accel=({:.3f},{:.3f},{:.3f}) "
-                                 "gyro=({:.3f},{:.3f},{:.3f}) rest={}",
+                                 "gyro=({:.3f},{:.3f},{:.3f}) rest={} rot=({:.3f},{:.3f},{:.3f}) "
+                                 "ori0=({:.2f},{:.2f},{:.2f})",
                                  i, e, m.accel[0], m.accel[1], m.accel[2], m.gyro[0], m.gyro[1],
-                                 m.gyro[2], m.is_at_rest);
+                                 m.gyro[2], m.is_at_rest, m.rotation[0], m.rotation[1],
+                                 m.rotation[2], m.orientation[0][0], m.orientation[0][1],
+                                 m.orientation[0][2]);
                     }
                 }
             }
