@@ -76,6 +76,9 @@ jobs:
       CCACHE_COMPILERCHECK: content
       SCCACHE_DIR: ${{ github.workspace }}/.sccache
       SCCACHE_CACHE_SIZE: 3G
+      # CPM falls back to api.github.com when the release CDN times out; unauthenticated asset
+      # downloads would hit the 60 requests/hour limit.
+      GITHUB_TOKEN: ${{ github.token }}
     strategy:
       fail-fast: false
       matrix:
@@ -204,16 +207,29 @@ jobs:
         shell: pwsh
         run: |
           $zip = Join-Path $env:RUNNER_TEMP 'sccache.zip'
-          $url = 'https://github.com/mozilla/sccache/releases/download/v0.19.0/sccache-v0.19.0-x86_64-pc-windows-msvc.zip'
-          # The release CDN intermittently answers 504; retry inside curl and across attempts.
+          $tag = 'v0.19.0'
+          $name = 'sccache-v0.19.0-x86_64-pc-windows-msvc.zip'
+          # releases/download/<tag>/<file> has been answering 504 for hours while the API asset
+          # endpoint still redirects to a healthy blob, so resolve the asset id and pull the
+          # bytes through api.github.com. The size check below rejects truncated bodies.
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN"; Accept = 'application/vnd.github+json' }
+          $release = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/mozilla/sccache/releases/tags/$tag"
+          $asset = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+          if (-not $asset) { throw "asset $name missing from sccache $tag" }
+          $api = "https://api.github.com/repos/mozilla/sccache/releases/assets/$($asset.id)"
           for ($attempt = 1; $attempt -le 5; $attempt++) {
-            & curl.exe -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 30 -o $zip $url
-            if ($LASTEXITCODE -eq 0 -and (Test-Path $zip)) { break }
+            & curl.exe -fsSL --retry 3 --retry-all-errors --retry-delay 3 --connect-timeout 30 -H "Authorization: Bearer $env:GITHUB_TOKEN" -H 'Accept: application/octet-stream' -o $zip $api
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $zip) -and ((Get-Item $zip).Length -eq $asset.size)) { break }
             Write-Host "sccache download attempt $attempt failed (curl exit $LASTEXITCODE)"
             Remove-Item $zip -ErrorAction SilentlyContinue
             Start-Sleep -Seconds (5 * $attempt)
           }
-          if (-not (Test-Path $zip)) { throw 'sccache download failed after 5 attempts' }
+          # sccache only accelerates clang-cl; Configure Windows drops the launcher flags when it
+          # is absent, so a dead download link must not cost the whole binary.
+          if (-not (Test-Path $zip)) {
+            Write-Host '::warning::sccache unavailable, building without a compiler cache'
+            exit 0
+          }
           Expand-Archive $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'sccache')
           $bin = (Get-ChildItem -Recurse -Filter sccache.exe (Join-Path $env:RUNNER_TEMP 'sccache')).DirectoryName
           $bin | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
@@ -304,6 +320,11 @@ jobs:
             flags+=" -Wno-error=profile-instr-out-of-date -Wno-error=profile-instr-unprofiled"
             flags+=" -Wno-error=backend-plugin"
           fi
+          # Install sccache on Windows degrades to a warning when the download fails.
+          launcher=""
+          if command -v sccache > /dev/null; then
+            launcher="-DCMAKE_C_COMPILER_LAUNCHER=sccache -DCMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          fi
           cmake -S . -B build/release -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
@@ -318,8 +339,7 @@ jobs:
             -DLICHII_BUILD_TAG=build-${{ github.run_number }} \
             -DLICHII_BUILD_PLATFORM=${{ matrix.platform }} \
             -DUSE_DISCORD_PRESENCE=OFF \
-            -DCMAKE_C_COMPILER_LAUNCHER=sccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=sccache \
+            $launcher \
             "-DCMAKE_C_COMPILER=$LLVM_ROOT/bin/clang-cl.exe" \
             "-DCMAKE_CXX_COMPILER=$LLVM_ROOT/bin/clang-cl.exe" \
             "-DCMAKE_LINKER=$LLVM_ROOT/bin/lld-link.exe" \
@@ -361,16 +381,19 @@ jobs:
       - name: Build
         shell: bash
         run: |
-          if command -v ccache > /dev/null; then ccache --zero-stats; else sccache --zero-stats; fi
+          if command -v ccache > /dev/null; then ccache --zero-stats
+          elif command -v sccache > /dev/null; then sccache --zero-stats; fi
           targets="yuzu yuzu-cmd"
           if [[ "${{ matrix.platform }}" == windows* ]]; then targets="$targets lichii-updater"; fi
           cmake --build build/release --target $targets --parallel
-          if command -v ccache > /dev/null; then ccache --show-stats; else sccache --show-stats; fi
+          if command -v ccache > /dev/null; then ccache --show-stats
+          elif command -v sccache > /dev/null; then sccache --show-stats; fi
 
       - name: Stop sccache on Windows
         if: always() && startsWith(matrix.platform, 'windows') && steps.compiler-cache.outcome == 'success'
         shell: pwsh
-        run: sccache --stop-server
+        run: |
+          if (Get-Command sccache -ErrorAction SilentlyContinue) { sccache --stop-server }
 
       - name: Save compiler objects
         if: always() && steps.compiler-cache.outcome == 'success'
