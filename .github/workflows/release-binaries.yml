@@ -217,7 +217,16 @@ jobs:
         shell: pwsh
         run: |
           $zip = Join-Path $env:RUNNER_TEMP 'sccache.zip'
-          Invoke-WebRequest -OutFile $zip https://github.com/mozilla/sccache/releases/download/v0.19.0/sccache-v0.19.0-x86_64-pc-windows-msvc.zip
+          $url = 'https://github.com/mozilla/sccache/releases/download/v0.19.0/sccache-v0.19.0-x86_64-pc-windows-msvc.zip'
+          # The release CDN intermittently answers 504; retry inside curl and across attempts.
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            & curl.exe -fsSL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 30 -o $zip $url
+            if ($LASTEXITCODE -eq 0 -and (Test-Path $zip)) { break }
+            Write-Host "sccache download attempt $attempt failed (curl exit $LASTEXITCODE)"
+            Remove-Item $zip -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds (5 * $attempt)
+          }
+          if (-not (Test-Path $zip)) { throw 'sccache download failed after 5 attempts' }
           Expand-Archive $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'sccache')
           $bin = (Get-ChildItem -Recurse -Filter sccache.exe (Join-Path $env:RUNNER_TEMP 'sccache')).DirectoryName
           $bin | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
