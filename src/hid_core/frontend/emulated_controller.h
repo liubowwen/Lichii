@@ -515,6 +515,13 @@ private:
     bool IsControllerSupported(bool use_temporary_value = false) const;
 
     /**
+     * Checks a specific controller type against the supported_style_tag
+     * @param type Controller type to test
+     * @return true if the style set the running game requested accepts this type
+     */
+    bool IsNpadStyleSupported(NpadStyleIndex type) const;
+
+    /**
      * Updates the button status of the controller
      * @param callback A CallbackStatus containing the button status
      * @param index Button ID of the to be updated
