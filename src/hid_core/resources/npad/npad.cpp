@@ -505,18 +505,19 @@ void NPad::RequestPadStateUpdate(Kernel::KernelCore& kernel, u64 aruid, Core::HI
         pad_entry.npad_buttons.raw = rotated;
     }
 
-    // A left Joy-Con retyped to Dual Joycons also has to answer the other half's shoulders: the
-    // console's Dual layout carries both ZL and ZR, so a game that only accepts Dual (Nintendo
-    // Switch Sports Resort narrows the style set to 0x6) waits on "press ZR" forever - the left half
-    // has no ZR at all. Held sideways the rail buttons are the shoulders, so let SR answer R and ZR,
-    // and SL answer L. Only while the retype lasts: with a native JoyconLeft the game knows what the
-    // half can report and distinguishes L from ZL itself.
-    if (is_sideways_left && controller_type != Core::HID::NpadStyleIndex::JoyconLeft) {
+    // A left Joy-Con has to answer the other half's shoulders no matter which style it currently
+    // runs as. The console's full and Dual layouts carry both ZL and ZR, so a game that asks for
+    // "press ZR" waits forever on a pad that has no ZR at all - and a game can retype the controller
+    // between requests, so gating this on the running type made the same button work only part of
+    // the time (the log shows the style flipping between JoyconLeft and JoyconDual mid-session).
+    // Held sideways the rail buttons sit where the shoulders are, so let SR answer R and ZR, and SL
+    // answer L and ZL. The real SL/SR bits are still reported separately below.
+    if (is_sideways_left) {
         if (button_state.left_sr != 0) {
             pad_entry.npad_buttons.raw |= btn::R | btn::ZR;
         }
         if (button_state.left_sl != 0) {
-            pad_entry.npad_buttons.raw |= btn::L;
+            pad_entry.npad_buttons.raw |= btn::L | btn::ZL;
         }
     }
 
