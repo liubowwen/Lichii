@@ -202,8 +202,78 @@ function(cpm_download url file)
 
     # TODO: use return code or something
     if (NOT code EQUAL 0)
-        fatal("Download for ${pkg_url} failed after 5 tries")
+        # github.com/<owner>/<repo>/releases/download/... can answer 504 Gateway Time-out for
+        # hours while the API asset endpoint keeps redirecting to a healthy blob, so fall back to
+        # resolving the asset id through api.github.com before giving up.
+        cpm_download_github_asset("${url}" "${file}" api_code)
+        if (NOT api_code EQUAL 0)
+            fatal("Download for ${url} failed after 5 tries (API fallback: ${api_code})")
+        endif()
     endif()
+endfunction()
+
+# Fetch a GitHub release asset through the API instead of the release CDN.
+#
+# Takes the same URL the download button uses, resolves the matching asset id and requests the
+# bytes with the octet-stream accept header. Returns 0 in out_var on success, non-zero otherwise.
+function(cpm_download_github_asset url file out_var)
+    set(${out_var} 1 PARENT_SCOPE)
+
+    if(NOT url MATCHES "^https://github\\.com/([^/]+)/([^/]+)/releases/download/([^/]+)/(.+)$")
+        return()
+    endif()
+    set(owner "${CMAKE_MATCH_1}")
+    set(repo "${CMAKE_MATCH_2}")
+    set(tag "${CMAKE_MATCH_3}")
+    set(asset_name "${CMAKE_MATCH_4}")
+
+    # Unauthenticated asset downloads are rate limited; the CI passes a read-only token.
+    set(json_headers "Accept: application/vnd.github+json")
+    set(asset_headers "Accept: application/octet-stream")
+    if(DEFINED ENV{GITHUB_TOKEN} AND NOT "$ENV{GITHUB_TOKEN}" STREQUAL "")
+        list(APPEND json_headers "Authorization: Bearer $ENV{GITHUB_TOKEN}")
+        list(APPEND asset_headers "Authorization: Bearer $ENV{GITHUB_TOKEN}")
+    endif()
+
+    set(meta_file "${file}.release.json")
+    file(DOWNLOAD "https://api.github.com/repos/${owner}/${repo}/releases/tags/${tag}"
+        "${meta_file}" STATUS meta_status HTTPHEADER ${json_headers})
+    list(GET meta_status 0 meta_code)
+    if(NOT meta_code EQUAL 0)
+        file(REMOVE "${meta_file}")
+        return()
+    endif()
+
+    file(READ "${meta_file}" meta)
+    file(REMOVE "${meta_file}")
+    string(JSON asset_count ERROR_VARIABLE json_error LENGTH "${meta}" assets)
+    if(json_error)
+        return()
+    endif()
+
+    math(EXPR last_asset "${asset_count} - 1")
+    foreach(i RANGE ${last_asset})
+        string(JSON name GET "${meta}" assets ${i} name)
+        if(name STREQUAL asset_name)
+            string(JSON id GET "${meta}" assets ${i} id)
+            string(JSON expected_size GET "${meta}" assets ${i} size)
+            file(DOWNLOAD "https://api.github.com/repos/${owner}/${repo}/releases/assets/${id}"
+                "${file}" STATUS asset_status HTTPHEADER ${asset_headers})
+            list(GET asset_status 0 asset_code)
+            if(asset_code EQUAL 0)
+                file(SIZE "${file}" actual_size)
+                if(NOT actual_size EQUAL expected_size)
+                    echo_error("GitHub API fallback: ${asset_name} is ${actual_size} bytes, "
+                        "expected ${expected_size}")
+                    set(asset_code 1)
+                endif()
+            endif()
+            set(${out_var} ${asset_code} PARENT_SCOPE)
+            return()
+        endif()
+    endforeach()
+
+    echo_error("GitHub API fallback: no asset ${asset_name} in ${owner}/${repo}@${tag}")
 endfunction()
 
 # Wrapper around find_program that works with Git for Windows
