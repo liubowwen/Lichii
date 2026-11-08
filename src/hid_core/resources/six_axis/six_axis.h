@@ -65,7 +65,8 @@ private:
         bool is_fusion_enabled{true};
         bool unaltered_passthrough{false};
         Core::HID::SixAxisSensorFusionParameters fusion{};
-        Core::HID::SixAxisSensorCalibrationParameter calibration{};
+        Core::HID::SixAxisSensorCalibrationParameter calibration{
+            DefaultSixAxisSensorCalibrationParameter()};
         Core::HID::SixAxisSensorIcInformation ic_information{DefaultSixAxisSensorIcInformation()};
         Core::HID::GyroscopeZeroDriftMode gyroscope_zero_drift_mode{
             Core::HID::GyroscopeZeroDriftMode::Standard};
