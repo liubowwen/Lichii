@@ -108,11 +108,13 @@ void EmulatedController::ReloadFromSettings() {
     // Other or debug controller should always be a pro controller
     if (npad_id_type != NpadIdType::Other) {
         SetNpadStyleIndex(MapSettingsTypeToNPad(player.controller_type));
-        original_npad_type = npad_type.load();
     } else {
         SetNpadStyleIndex(NpadStyleIndex::Fullkey);
-        original_npad_type = npad_type.load();
     }
+    // Read the type back through GetNpadStyleIndex() instead of npad_type: while the player is being
+    // configured SetNpadStyleIndex() only updates tmp_npad_type, and npad_type may still hold a
+    // temporary fallback type chosen by SetSupportedNpadStyleTag() for the running game.
+    original_npad_type = GetNpadStyleIndex(true);
 
     // Disable special features before disconnecting
     if (controller.right_polling_mode != Common::Input::PollingMode::Active) {
@@ -579,7 +581,14 @@ void EmulatedController::UnloadInput() {
 void EmulatedController::EnableConfiguration() {
     is_configuring.store(true);
     tmp_is_connected.store(is_connected);
-    tmp_npad_type.store(npad_type);
+
+    // Seed the temporary type with the type the user configured. SetSupportedNpadStyleTag() may
+    // have retyped the controller behind the user's back while a game narrowed its style set (a
+    // single Joy-Con gets reconnected as Dual Joycons so its inputs keep flowing), and seeding from
+    // npad_type made the configuration dialog display - and then save - that fallback type.
+    const auto configured_type = original_npad_type.load();
+    tmp_npad_type.store(configured_type == NpadStyleIndex::None ? npad_type.load()
+                                                               : configured_type);
 }
 
 void EmulatedController::DisableConfiguration() {
@@ -595,11 +604,18 @@ void EmulatedController::DisableConfiguration() {
 
     // Apply temporary npad type to the real controller
     if (tmp_npad_type != npad_type) {
-        if (is_connected) {
-            Disconnect();
+        // Only retype the controller when the running game accepts the configured style. A game can
+        // narrow its supported set at any time and SetSupportedNpadStyleTag() then reconnects the
+        // controller with a fallback style; disconnecting here to force an unsupported style would
+        // leave the player without input until the game widens its set again. The configured style
+        // is still recorded, so it is applied as soon as the game accepts it.
+        if (IsNpadStyleSupported(tmp_npad_type.load())) {
+            if (is_connected) {
+                Disconnect();
+            }
+            SetNpadStyleIndex(tmp_npad_type.load());
         }
-        SetNpadStyleIndex(tmp_npad_type);
-        original_npad_type.store(tmp_npad_type);
+        original_npad_type.store(tmp_npad_type.load());
     }
 
     // Apply temporary connected status to the real controller
@@ -635,7 +651,14 @@ void EmulatedController::SaveCurrentConfig() {
     const auto player_index = Service::HID::NpadIdTypeToIndex(npad_id_type);
     auto& player = Settings::values.players.GetValue()[player_index];
     player.connected = is_connected;
-    player.controller_type = MapNPadToSettingsType(npad_type);
+
+    // Save the type the user configured instead of the type the controller happens to run as.
+    // Both can differ while a game keeps the controller on a fallback style (see
+    // SetSupportedNpadStyleTag()); saving npad_type would silently overwrite the user's choice with
+    // that fallback, e.g. turning a configured single Joy-Con into "Dual Joycons".
+    const auto configured_type = original_npad_type.load();
+    player.controller_type = MapNPadToSettingsType(
+        configured_type == NpadStyleIndex::None ? npad_type.load() : configured_type);
     for (std::size_t index = 0; index < player.buttons.size(); ++index) {
         player.buttons[index] = button_params[index].Serialize();
     }
@@ -1667,8 +1690,7 @@ bool EmulatedController::IsControllerFullkey(bool use_temporary_value) const {
     }
 }
 
-bool EmulatedController::IsControllerSupported(bool use_temporary_value) const {
-    const auto type = is_configuring.load() && use_temporary_value ? tmp_npad_type.load() : npad_type.load();
+bool EmulatedController::IsNpadStyleSupported(NpadStyleIndex type) const {
     switch (type) {
     case NpadStyleIndex::Fullkey:     return bool(supported_style_tag.fullkey);
     case NpadStyleIndex::Handheld:    return bool(supported_style_tag.handheld);
@@ -1683,6 +1705,11 @@ bool EmulatedController::IsControllerSupported(bool use_temporary_value) const {
     case NpadStyleIndex::SegaGenesis: return bool(supported_style_tag.lager);
     default: return false;
     }
+}
+
+bool EmulatedController::IsControllerSupported(bool use_temporary_value) const {
+    const auto type = is_configuring.load() && use_temporary_value ? tmp_npad_type.load() : npad_type.load();
+    return IsNpadStyleSupported(type);
 }
 
 void EmulatedController::Connect(bool use_temporary_value) {
