@@ -1062,14 +1062,9 @@ function(AddCIPackage)
             set(sha512sum_file
                 "${CMAKE_CURRENT_BINARY_DIR}/.cpmutil_${ARTIFACT}_sha512sum")
 
-            file(DOWNLOAD "${sha512sum_url}" "${sha512sum_file}"
-                STATUS sha512sum_status)
-            list(GET sha512sum_status 0 sha512sum_error)
-
-            if(sha512sum_error)
-                message(FATAL_ERROR "[CPMUtil] Failed to download sha512sum "
-                    "for ${ARTIFACT_NAME} from ${sha512sum_url}")
-            endif()
+            # The same CDN hiccup that affects the packages also affects this small sidecar file,
+            # and a single 504 here aborts configure, so reuse the retrying downloader.
+            cpm_download("${sha512sum_url}" "${sha512sum_file}")
 
             file(READ "${sha512sum_file}" sha512sum_hash)
             string(STRIP "${sha512sum_hash}" sha512sum_hash)
